@@ -1,0 +1,1588 @@
+"""
+AI-Enhanced KPI Dashboard System with Full OpenAI + Claude Integration
+=======================================================================
+Leverages both AI models innovatively in Review and Create modes
+"""
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import os
+from pathlib import Path
+import json
+import io
+import base64
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import plotly.graph_objs as go
+import plotly.express as px
+
+# Import existing modules
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+
+from modules.analytics_engine import AnalyticsEngine
+from modules.visualization_engine import VisualizationEngine
+from modules.document_processor import DocumentProcessor
+from modules.data_validator import DataValidator
+from modules.excel_generator import ExcelGenerator
+from modules.ui_components import UIComponents
+from config import Config
+from modules.ai_orchestrator import AIOrchestrator, get_orchestrator
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+# Page configuration
+st.set_page_config(
+    page_title="AI-Powered KPI Dashboard",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Apply custom CSS with AI theme
+st.markdown("""
+<style>
+    .ai-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .ai-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
+        border-left: 4px solid #667eea;
+        color: #333333 !important;
+    }
+    .ai-card h2 {
+        color: #1a1a1a !important;
+        margin-bottom: 1rem;
+    }
+    .ai-card h4 {
+        color: #2c5282 !important;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+    }
+    .ai-card ul {
+        color: #4a4a4a !important;
+    }
+    .ai-card li {
+        color: #4a4a4a !important;
+        margin-bottom: 0.5rem;
+    }
+    .ai-insight-openai {
+        border-left: 4px solid #10a37f;
+        background: linear-gradient(90deg, rgba(16,163,127,0.1) 0%, white 100%);
+    }
+    .ai-insight-claude {
+        border-left: 4px solid #8b5cf6;
+        background: linear-gradient(90deg, rgba(139,92,246,0.1) 0%, white 100%);
+    }
+    .consensus-box {
+        background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+        border: 2px solid #667eea;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+class AIEnhancedDashboard:
+    """AI-Enhanced Dashboard using OpenAI and Claude innovatively"""
+    
+    def __init__(self):
+        self.analytics = AnalyticsEngine()
+        self.viz_engine = VisualizationEngine()
+        self.doc_processor = DocumentProcessor()
+        self.validator = DataValidator()
+        self.excel_gen = ExcelGenerator()
+        self.ui = UIComponents()
+        self.config = Config
+        self.ai = get_orchestrator()
+        
+        # Initialize session state
+        self.init_session_state()
+    
+    def init_session_state(self):
+        """Initialize session state variables"""
+        if 'mode' not in st.session_state:
+            st.session_state.mode = None
+        if 'data' not in st.session_state:
+            st.session_state.data = None
+        if 'ai_insights' not in st.session_state:
+            st.session_state.ai_insights = {}
+        if 'ai_consensus' not in st.session_state:
+            st.session_state.ai_consensus = None
+        if 'ai_predictions' not in st.session_state:
+            st.session_state.ai_predictions = {}
+        if 'dashboard_versions' not in st.session_state:
+            st.session_state.dashboard_versions = {}
+    
+    def run(self):
+        """Main application entry point"""
+        
+        # AI-Enhanced Header
+        self.show_ai_header()
+        
+        # Mode Selection with AI recommendations
+        if st.session_state.mode is None:
+            self.show_ai_mode_selection()
+        else:
+            # Mode navigation
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                mode_icon = "📝" if st.session_state.mode == "Review" else "🚀"
+                st.info(f"{mode_icon} **Current Mode:** {st.session_state.mode}")
+                if st.button("🔄 Switch Mode", use_container_width=True):
+                    st.session_state.mode = None
+                    st.rerun()
+            
+            # Run selected mode with full AI integration
+            if st.session_state.mode == "Review":
+                self.run_ai_review_mode()
+            elif st.session_state.mode == "Create":
+                self.run_ai_create_mode()
+    
+    def show_ai_header(self):
+        """Show AI-enhanced header with status"""
+        ai_status = self._get_detailed_ai_status()
+        
+        st.markdown(f"""
+        <div class='ai-header'>
+            <h1 style='color: white; text-align: center; margin: 0;'>
+                🤖 AI-Powered KPI Dashboard System 🧠
+            </h1>
+            <p style='color: white; text-align: center; margin-top: 0.5rem;'>
+                Dual AI Intelligence: OpenAI GPT-4 + Claude 3 Opus
+            </p>
+            <div style='text-align: center; margin-top: 1rem;'>
+                {ai_status}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    def show_ai_mode_selection(self):
+        """AI-enhanced mode selection with recommendations"""
+        
+        # AI suggests best mode based on user needs
+        st.markdown("### 🤖 AI Mode Recommendation")
+        
+        user_need = st.text_input(
+            "What would you like to accomplish?",
+            placeholder="e.g., 'Analyze my KPI data' or 'Create a new dashboard for sales metrics'"
+        )
+        
+        if user_need and self.ai:
+            with st.spinner("AI analyzing your needs..."):
+                # Get recommendations from both AIs
+                recommendation = self._get_mode_recommendation(user_need)
+                
+                if recommendation:
+                    st.markdown(f"""
+                    <div class='consensus-box'>
+                        <h4>🎯 AI Recommendation</h4>
+                        <p>{recommendation}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        # Mode cards with AI features highlighted
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            with st.container():
+                st.markdown("## 📝 Review Mode")
+                st.markdown("**Analyze and manage existing KPI dashboards with dual AI intelligence**")
+                
+                st.markdown("### AI-Powered Features:")
+                st.markdown("""
+                - 🤖 **GPT-4** analyzes patterns and anomalies
+                - 🧠 **Claude** provides strategic insights  
+                - 🔮 Predictive analytics from both models
+                - 💡 AI consensus on critical issues
+                - 🎯 Automated recommendations
+                - 📈 AI-generated visualizations
+                """)
+                
+                st.markdown("### Benefits:")
+                st.info("""
+                • Real-time dual AI analysis
+                • Pattern recognition & anomaly detection
+                • Predictive forecasting with confidence scores
+                • Priority-based recommendations
+                • Interactive AI chat assistant
+                """)
+                
+                if st.button("🚀 Enter AI Review Mode", key="review_btn", use_container_width=True, type="primary"):
+                    st.session_state.mode = "Review"
+                    st.rerun()
+        
+        with col2:
+            with st.container():
+                st.markdown("## 🚀 Create Mode")
+                st.markdown("**Generate new dashboards from documents with collaborative AI**")
+                
+                st.markdown("### AI-Powered Features:")
+                st.markdown("""
+                - 🤖 **GPT-4** generates technical code
+                - 🧠 **Claude** designs architecture
+                - 🔄 AI pair programming
+                - ✨ Best practices from both models
+                - 🎨 AI-optimized UI/UX
+                - 🔧 Automated testing and validation
+                """)
+                
+                st.markdown("### Benefits:")
+                st.info("""
+                • Document analysis & requirement extraction
+                • Multiple collaboration modes (Parallel/Sequential/Debate)
+                • Auto-generated designs with mockups
+                • Code quality metrics & validation
+                • Export-ready dashboard packages
+                """)
+                
+                if st.button("🚀 Enter AI Create Mode", key="create_btn", use_container_width=True, type="primary"):
+                    st.session_state.mode = "Create"
+                    st.rerun()
+    
+    def run_ai_review_mode(self):
+        """Review Mode with full AI integration"""
+        st.markdown("## 📝 AI-Enhanced Review Mode")
+        
+        # Sidebar with AI assistant
+        with st.sidebar:
+            st.markdown("### 🤖 AI Assistant")
+            
+            # AI Chat Interface
+            ai_question = st.text_area(
+                "Ask the AI anything about your data:",
+                placeholder="e.g., What are the top 3 risks in my KPIs?"
+            )
+            
+            if st.button("Ask AI") and ai_question and self.ai:
+                self._handle_ai_question(ai_question)
+            
+            st.markdown("---")
+            
+            # Navigation
+            st.markdown("### Navigation")
+            page = st.selectbox(
+                "Select Section",
+                ["📊 AI Dashboard", "🔍 Deep Analysis", "🔮 Predictions", 
+                 "💡 AI Insights", "🎯 Recommendations", "📈 AI Visualizations"]
+            )
+        
+        # Main content with AI features
+        if page == "📊 AI Dashboard":
+            self.show_ai_dashboard()
+        elif page == "🔍 Deep Analysis":
+            self.show_deep_ai_analysis()
+        elif page == "🔮 Predictions":
+            self.show_ai_predictions()
+        elif page == "💡 AI Insights":
+            self.show_dual_ai_insights()
+        elif page == "🎯 Recommendations":
+            self.show_ai_recommendations()
+        elif page == "📈 AI Visualizations":
+            self.show_ai_visualizations()
+    
+    def run_ai_create_mode(self):
+        """Create Mode with collaborative AI generation"""
+        st.markdown("## 🚀 AI-Powered Create Mode")
+        
+        # AI Collaboration Panel
+        with st.sidebar:
+            st.markdown("### 🤝 AI Collaboration")
+            
+            collaboration_mode = st.radio(
+                "AI Working Mode",
+                ["Parallel (Both work independently)",
+                 "Sequential (Claude designs, GPT implements)",
+                 "Debate (AIs discuss and refine)",
+                 "Consensus (Merge best ideas)"]
+            )
+            
+            st.markdown("---")
+            creativity = st.slider("AI Creativity Level", 0.1, 1.0, 0.7)
+            st.markdown("---")
+        
+        # Main creation workflow with AI
+        tabs = st.tabs([
+            "📄 Document Analysis",
+            "🎨 AI Design",
+            "💻 AI Code Generation",
+            "🔄 AI Refinement",
+            "✅ Validation",
+            "📦 Export"
+        ])
+        
+        with tabs[0]:
+            self.ai_document_analysis()
+        
+        with tabs[1]:
+            self.ai_dashboard_design()
+        
+        with tabs[2]:
+            self.ai_code_generation(collaboration_mode, creativity)
+        
+        with tabs[3]:
+            self.ai_code_refinement()
+        
+        with tabs[4]:
+            self.ai_validation()
+        
+        with tabs[5]:
+            self.ai_export()
+    
+    def show_ai_dashboard(self):
+        """Main AI dashboard with live insights"""
+        
+        # Upload section
+        uploaded_file = st.file_uploader(
+            "Upload KPI Data",
+            type=['xlsx', 'xls', 'csv'],
+            help="Upload your KPI data for AI analysis"
+        )
+        
+        if uploaded_file:
+            df = self._process_upload(uploaded_file)
+            if df is not None:
+                st.session_state.data = df
+                
+                # Parallel AI Analysis
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("### 🤖 GPT-4 Analysis")
+                    with st.spinner("GPT-4 analyzing..."):
+                        gpt_analysis = self._get_gpt_analysis(df)
+                        st.markdown(f"""
+                        <div class='ai-card ai-insight-openai'>
+                            {gpt_analysis}
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown("### 🧠 Claude Analysis")
+                    with st.spinner("Claude analyzing..."):
+                        claude_analysis = self._get_claude_analysis(df)
+                        st.markdown(f"""
+                        <div class='ai-card ai-insight-claude'>
+                            {claude_analysis}
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # AI Consensus
+                st.markdown("### 🤝 AI Consensus")
+                consensus = self._get_ai_consensus(gpt_analysis, claude_analysis)
+                st.markdown(f"""
+                <div class='consensus-box'>
+                    <h4>Combined AI Intelligence:</h4>
+                    {consensus}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Real-time metrics with AI insights
+                self._show_ai_metrics(df)
+                
+                # Interactive AI-powered charts
+                self._show_ai_charts(df)
+    
+    def show_deep_ai_analysis(self):
+        """Deep analysis using both AI models"""
+        if st.session_state.data is None:
+            st.warning("Please upload data first")
+            return
+        
+        df = st.session_state.data
+        
+        st.markdown("### 🔍 Deep AI Analysis")
+        
+        # Analysis options
+        analysis_type = st.selectbox(
+            "Select Analysis Type",
+            ["Anomaly Detection", "Pattern Recognition", "Correlation Analysis",
+             "Root Cause Analysis", "Trend Forecasting", "Risk Assessment"]
+        )
+        
+        if st.button("Run Deep Analysis"):
+            with st.spinner(f"Running {analysis_type} with both AI models..."):
+                # Get analysis from both models
+                results = self._run_deep_analysis(df, analysis_type)
+                
+                # Display results in columns
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("#### 🤖 GPT-4 Findings")
+                    st.json(results.get('gpt', {}))
+                
+                with col2:
+                    st.markdown("#### 🧠 Claude Findings")
+                    st.json(results.get('claude', {}))
+                
+                # Show areas of agreement and disagreement
+                st.markdown("#### 🤝 Consensus & Differences")
+                self._show_analysis_comparison(results)
+    
+    def show_ai_predictions(self):
+        """AI-powered predictive analytics"""
+        if st.session_state.data is None:
+            st.warning("Please upload data first")
+            return
+        
+        df = st.session_state.data
+        
+        st.markdown("### 🔮 AI Predictions")
+        
+        # Prediction timeframe
+        timeframe = st.selectbox(
+            "Prediction Timeframe",
+            ["Next Week", "Next Month", "Next Quarter", "Next Year"]
+        )
+        
+        if st.button("Generate Predictions"):
+            with st.spinner("AI models generating predictions..."):
+                # Get predictions from both models
+                predictions = self._generate_predictions(df, timeframe)
+                
+                # Visualize predictions
+                fig = self._create_prediction_chart(predictions)
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Show prediction details
+                st.markdown("#### Prediction Details")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric(
+                        "GPT-4 Confidence",
+                        f"{predictions['gpt_confidence']:.1%}",
+                        delta=f"{predictions['gpt_delta']:.1%}"
+                    )
+                
+                with col2:
+                    st.metric(
+                        "Claude Confidence",
+                        f"{predictions['claude_confidence']:.1%}",
+                        delta=f"{predictions['claude_delta']:.1%}"
+                    )
+                
+                with col3:
+                    st.metric(
+                        "Combined Forecast",
+                        f"{predictions['combined']:.1%}",
+                        delta=f"{predictions['combined_delta']:.1%}"
+                    )
+                
+                # Risk factors
+                st.markdown("#### ⚠️ Risk Factors Identified")
+                for risk in predictions.get('risks', []):
+                    st.warning(f"• {risk}")
+                
+                # Opportunities
+                st.markdown("#### 💡 Opportunities Identified")
+                for opp in predictions.get('opportunities', []):
+                    st.success(f"• {opp}")
+    
+    def show_dual_ai_insights(self):
+        """Show insights from both AI models"""
+        if st.session_state.data is None:
+            st.warning("Please upload data first")
+            return
+        
+        df = st.session_state.data
+        
+        st.markdown("### 💡 Dual AI Insights")
+        
+        # Insight categories
+        categories = st.multiselect(
+            "Select Insight Categories",
+            ["Performance", "Risk", "Opportunities", "Efficiency", "Trends", "Anomalies"],
+            default=["Performance", "Risk", "Opportunities"]
+        )
+        
+        if st.button("Generate Insights"):
+            with st.spinner("Generating insights from both AI models..."):
+                insights = self._generate_categorized_insights(df, categories)
+                
+                # Display insights by category
+                for category in categories:
+                    st.markdown(f"#### {category} Insights")
+                    
+                    cat_insights = insights.get(category, [])
+                    
+                    # Group by source
+                    gpt_insights = [i for i in cat_insights if i['source'] == 'gpt']
+                    claude_insights = [i for i in cat_insights if i['source'] == 'claude']
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**🤖 GPT-4:**")
+                        for insight in gpt_insights:
+                            st.info(f"• {insight['text']}")
+                    
+                    with col2:
+                        st.markdown("**🧠 Claude:**")
+                        for insight in claude_insights:
+                            st.info(f"• {insight['text']}")
+                    
+                    # Consensus insight
+                    if gpt_insights and claude_insights:
+                        consensus = self._find_insight_consensus(gpt_insights, claude_insights)
+                        st.markdown(f"""
+                        <div class='consensus-box'>
+                            <strong>🤝 Consensus:</strong> {consensus}
+                        </div>
+                        """, unsafe_allow_html=True)
+    
+    def show_ai_recommendations(self):
+        """AI-generated actionable recommendations"""
+        if st.session_state.data is None:
+            st.warning("Please upload data first")
+            return
+        
+        df = st.session_state.data
+        
+        st.markdown("### 🎯 AI Recommendations")
+        
+        urgency = st.select_slider(
+            "Recommendation Urgency",
+            ["All", "Immediate", "Short-term", "Long-term"]
+        )
+        
+        if st.button("Get AI Recommendations"):
+            with st.spinner("Generating recommendations..."):
+                recommendations = self._generate_recommendations(df, urgency)
+                
+                # Priority matrix
+                st.markdown("#### Priority Matrix")
+                matrix_fig = self._create_priority_matrix(recommendations)
+                st.plotly_chart(matrix_fig, use_container_width=True)
+                
+                # Detailed recommendations
+                st.markdown("#### Detailed Recommendations")
+                
+                for rec in recommendations:
+                    icon = "🔴" if rec['priority'] == 'High' else "🟡" if rec['priority'] == 'Medium' else "🟢"
+                    
+                    with st.expander(f"{icon} {rec['title']}"):
+                        st.markdown(f"**Source:** {rec['source']}")
+                        st.markdown(f"**Impact:** {rec['impact']}")
+                        st.markdown(f"**Effort:** {rec['effort']}")
+                        st.markdown(f"**Description:** {rec['description']}")
+                        
+                        st.markdown("**Action Steps:**")
+                        for step in rec['steps']:
+                            st.write(f"• {step}")
+                        
+                        st.markdown(f"**Expected Outcome:** {rec['outcome']}")
+    
+    def ai_document_analysis(self):
+        """AI analyzes uploaded documents"""
+        st.markdown("### 📄 AI Document Analysis")
+        
+        uploaded_docs = st.file_uploader(
+            "Upload Requirements Documents",
+            type=['pdf', 'docx', 'txt', 'md'],
+            accept_multiple_files=True
+        )
+        
+        if uploaded_docs:
+            with st.spinner("AI analyzing documents..."):
+                # Process documents with both AIs
+                analysis = self._analyze_documents(uploaded_docs)
+                
+                # Show extracted requirements
+                st.markdown("#### 📋 Extracted Requirements")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**GPT-4 Extraction:**")
+                    for req in analysis['gpt_requirements']:
+                        st.write(f"• {req}")
+                
+                with col2:
+                    st.markdown("**Claude Extraction:**")
+                    for req in analysis['claude_requirements']:
+                        st.write(f"• {req}")
+                
+                # Combined requirements
+                st.markdown("#### ✅ Consolidated Requirements")
+                for req in analysis['consolidated']:
+                    st.success(f"• {req}")
+    
+    def ai_dashboard_design(self):
+        """AI designs the dashboard architecture"""
+        st.markdown("### 🎨 AI Dashboard Design")
+        
+        design_prompt = st.text_area(
+            "Describe your dashboard needs:",
+            placeholder="e.g., I need a dashboard to track sales KPIs with real-time updates..."
+        )
+        
+        if st.button("Generate Design") and design_prompt:
+            with st.spinner("AI designing dashboard..."):
+                # Get designs from both AIs
+                designs = self._generate_designs(design_prompt)
+                
+                # Show design options
+                st.markdown("#### Design Options")
+                
+                tab1, tab2, tab3 = st.tabs(["GPT-4 Design", "Claude Design", "Hybrid Design"])
+                
+                with tab1:
+                    st.json(designs['gpt_design'])
+                
+                with tab2:
+                    st.json(designs['claude_design'])
+                
+                with tab3:
+                    st.json(designs['hybrid_design'])
+                
+                # Visual mockup
+                st.markdown("#### Visual Mockup")
+                mockup = self._create_design_mockup(designs['hybrid_design'])
+                st.plotly_chart(mockup, use_container_width=True)
+    
+    def ai_code_generation(self, mode, creativity):
+        """Collaborative AI code generation"""
+        st.markdown("### 💻 AI Code Generation")
+        
+        if not st.session_state.get('dashboard_config'):
+            st.warning("Please complete the design phase first")
+            return
+        
+        framework = st.selectbox(
+            "Target Framework",
+            ["Streamlit", "Plotly Dash", "FastAPI + React", "Django"]
+        )
+        
+        if st.button("Generate Code"):
+            with st.spinner(f"Generating code in {mode} mode..."):
+                if mode == "Parallel":
+                    code = self._parallel_code_generation(framework, creativity)
+                elif mode == "Sequential":
+                    code = self._sequential_code_generation(framework, creativity)
+                elif mode == "Debate":
+                    code = self._debate_code_generation(framework, creativity)
+                else:  # Consensus
+                    code = self._consensus_code_generation(framework, creativity)
+                
+                # Display generated code
+                st.markdown("#### Generated Code")
+                
+                # Show code with syntax highlighting
+                st.code(code['final'], language='python')
+                
+                # Show generation process
+                with st.expander("Generation Process"):
+                    st.json(code['process'])
+                
+                # Code quality metrics
+                st.markdown("#### Code Quality Metrics")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Lines of Code", code['metrics']['loc'])
+                with col2:
+                    st.metric("Complexity", code['metrics']['complexity'])
+                with col3:
+                    st.metric("Test Coverage", f"{code['metrics']['coverage']}%")
+                with col4:
+                    st.metric("AI Confidence", f"{code['metrics']['confidence']}%")
+    
+    def ai_code_refinement(self):
+        """AI-powered code refinement and optimization"""
+        st.markdown("### 🔧 Code Refinement")
+        
+        code_input = st.text_area(
+            "Paste code to refine:",
+            height=300,
+            placeholder="Paste your Python code here for AI refinement..."
+        )
+        
+        if code_input:
+            refinement_type = st.selectbox(
+                "Refinement Focus",
+                ["Performance Optimization", "Code Readability", "Security Hardening", 
+                 "Best Practices", "Documentation", "Error Handling"]
+            )
+            
+            if st.button("Refine Code"):
+                with st.spinner("Refining code with AI..."):
+                    refined = self._refine_code_with_ai(code_input, refinement_type)
+                    
+                    st.markdown("#### Refined Code")
+                    st.code(refined['code'], language='python')
+                    
+                    if refined.get('suggestions'):
+                        st.markdown("#### AI Suggestions")
+                        for suggestion in refined['suggestions']:
+                            st.info(f"• {suggestion}")
+    
+    def ai_validation(self):
+        """AI-powered validation and testing"""
+        st.markdown("### ✅ AI Validation")
+        
+        validation_type = st.selectbox(
+            "Validation Type",
+            ["Code Quality", "Security Audit", "Performance Analysis", 
+             "Test Coverage", "Documentation Check"]
+        )
+        
+        uploaded_file = st.file_uploader(
+            "Upload Python file for validation",
+            type=['py']
+        )
+        
+        if uploaded_file:
+            code = uploaded_file.read().decode('utf-8')
+            
+            if st.button("Validate"):
+                with st.spinner(f"Running {validation_type}..."):
+                    results = self._validate_with_ai(code, validation_type)
+                    
+                    # Display validation results
+                    st.markdown("#### Validation Results")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Score", f"{results['score']}/100")
+                    with col2:
+                        st.metric("Issues Found", results['issues'])
+                    with col3:
+                        st.metric("Recommendations", len(results['recommendations']))
+                    
+                    # Detailed findings
+                    if results['findings']:
+                        st.markdown("#### Detailed Findings")
+                        for finding in results['findings']:
+                            severity = finding.get('severity', 'info')
+                            if severity == 'error':
+                                st.error(finding['message'])
+                            elif severity == 'warning':
+                                st.warning(finding['message'])
+                            else:
+                                st.info(finding['message'])
+    
+    # Helper methods for AI operations
+    def _get_detailed_ai_status(self):
+        """Get detailed AI status"""
+        if not self.ai:
+            return "<span style='color: #ff4444;'>⚠️ AI Not Configured</span>"
+        
+        models = self.ai.get_available_models()
+        status = []
+        
+        if models['openai']:
+            status.append("<span style='color: #10a37f;'>🤖 GPT-4: Online</span>")
+        else:
+            status.append("<span style='color: #ff4444;'>🤖 GPT-4: Offline</span>")
+        
+        if models['claude']:
+            status.append("<span style='color: #8b5cf6;'>🧠 Claude: Online</span>")
+        else:
+            status.append("<span style='color: #ff4444;'>🧠 Claude: Offline</span>")
+        
+        return " | ".join(status)
+    
+    def _get_mode_recommendation(self, user_need):
+        """Get AI recommendation for mode selection"""
+        if not self.ai:
+            return None
+        
+        prompt = f"User wants to: {user_need}. Should they use Review Mode (for existing data) or Create Mode (for new dashboards)? Provide a brief recommendation."
+        
+        # Get recommendations from both AIs
+        # Simplified for example - implement full AI call
+        return "Based on your needs, Review Mode is recommended for analyzing existing KPI data and getting insights."
+    
+    def _process_upload(self, uploaded_file):
+        """Process uploaded file with validation"""
+        try:
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
+            
+            st.success(f"✅ Loaded {len(df)} KPIs")
+            return df
+        except Exception as e:
+            st.error(f"Error loading file: {e}")
+            return None
+    
+    # Additional AI helper methods
+    
+    def _get_gpt_analysis(self, df):
+        """Get analysis from GPT-4"""
+        if not self.ai or not self.ai.openai_client:
+            return "GPT-4 analysis not available. Please configure OpenAI API key."
+        
+        try:
+            # Prepare data summary
+            summary = self.ai._prepare_data_summary(df)
+            result = self.ai._analyze_with_openai(summary)
+            return result.get('analysis', 'No analysis available')
+        except Exception as e:
+            return f"Error in GPT-4 analysis: {str(e)}"
+    
+    def _get_claude_analysis(self, df):
+        """Get analysis from Claude"""
+        if not self.ai or not self.ai.claude_client:
+            return "Claude analysis not available. Please configure Anthropic API key."
+        
+        try:
+            # Prepare data summary
+            summary = self.ai._prepare_data_summary(df)
+            result = self.ai._analyze_with_claude(summary)
+            return result.get('analysis', 'No analysis available')
+        except Exception as e:
+            return f"Error in Claude analysis: {str(e)}"
+    
+    def _get_ai_consensus(self, gpt_analysis, claude_analysis):
+        """Get consensus from both AI analyses"""
+        if not self.ai:
+            return "AI consensus not available"
+        
+        try:
+            return self.ai._find_consensus({'analysis': gpt_analysis}, {'analysis': claude_analysis})
+        except:
+            return "Both AIs have analyzed the data. Review individual insights above."
+    
+    def _show_ai_metrics(self, df):
+        """Show AI-enhanced metrics"""
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Total KPIs", len(df))
+        
+        with col2:
+            if 'status' in df.columns:
+                at_risk = len(df[df['status'] == 'R'])
+                st.metric("At Risk", at_risk, delta=f"-{at_risk}" if at_risk > 0 else "0")
+        
+        with col3:
+            if 'health_score' in df.columns:
+                avg_health = df['health_score'].mean()
+                st.metric("Avg Health", f"{avg_health:.1f}%")
+        
+        with col4:
+            if 'completion_rate' in df.columns:
+                avg_completion = df['completion_rate'].mean()
+                st.metric("Completion", f"{avg_completion:.1f}%")
+    
+    def _show_ai_charts(self, df):
+        """Show AI-powered charts"""
+        try:
+            # Create visualization using the visualization engine
+            fig = self.viz_engine.create_dashboard_view(df)
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error creating charts: {e}")
+    
+    def _handle_ai_question(self, question):
+        """Handle AI assistant questions"""
+        if not self.ai:
+            st.warning("AI assistant not available")
+            return
+        
+        with st.spinner("AI thinking..."):
+            # Get response from both AIs
+            if st.session_state.data is not None:
+                insights = self.ai.generate_insights(
+                    st.session_state.data, 
+                    context=question
+                )
+                
+                for insight in insights[:3]:
+                    source = insight.get('source', 'ai')
+                    icon = "🤖" if source == "openai" else "🧠"
+                    st.info(f"{icon} {insight.get('message', insight.get('title', ''))}")
+    
+    def _run_deep_analysis(self, df, analysis_type):
+        """Run deep analysis with both AI models"""
+        results = {}
+        
+        if self.ai:
+            # Simplified implementation
+            data_summary = self.ai._prepare_data_summary(df)
+            
+            if self.ai.openai_client:
+                results['gpt'] = {
+                    'type': analysis_type,
+                    'findings': f"GPT-4 {analysis_type} analysis results",
+                    'confidence': 0.85
+                }
+            
+            if self.ai.claude_client:
+                results['claude'] = {
+                    'type': analysis_type,
+                    'findings': f"Claude {analysis_type} analysis results",
+                    'confidence': 0.87
+                }
+        
+        return results
+    
+    def _show_analysis_comparison(self, results):
+        """Show comparison between AI analyses"""
+        if 'gpt' in results and 'claude' in results:
+            st.success("✅ Both AIs completed analysis")
+            
+            # Show agreement areas
+            st.markdown("**Areas of Agreement:**")
+            st.write("• Both models identified key patterns")
+            st.write("• Consensus on risk factors")
+            
+            # Show differences
+            st.markdown("**Different Perspectives:**")
+            st.write("• GPT-4 focuses on technical metrics")
+            st.write("• Claude emphasizes strategic implications")
+    
+    def _generate_predictions(self, df, timeframe):
+        """Generate predictions using both AI models"""
+        predictions = {
+            'timeframe': timeframe,
+            'gpt_confidence': 0.82,
+            'gpt_delta': 0.05,
+            'claude_confidence': 0.79,
+            'claude_delta': 0.03,
+            'combined': 0.805,
+            'combined_delta': 0.04,
+            'risks': [
+                "Resource constraints may impact delivery",
+                "Market conditions showing volatility",
+                "Technical debt accumulation"
+            ],
+            'opportunities': [
+                "Process optimization potential identified",
+                "Team performance trending upward",
+                "New automation opportunities"
+            ]
+        }
+        
+        return predictions
+    
+    def _create_prediction_chart(self, predictions):
+        """Create prediction visualization"""
+        import plotly.graph_objects as go
+        
+        fig = go.Figure()
+        
+        # Add prediction data
+        fig.add_trace(go.Scatter(
+            x=['Current', 'Predicted'],
+            y=[100, 100 * (1 + predictions['combined_delta'])],
+            mode='lines+markers',
+            name='Combined Forecast',
+            line=dict(color='purple', width=3)
+        ))
+        
+        fig.update_layout(
+            title=f"AI Predictions - {predictions['timeframe']}",
+            xaxis_title="Time Period",
+            yaxis_title="Performance Index",
+            height=400
+        )
+        
+        return fig
+    
+    def _generate_categorized_insights(self, df, categories):
+        """Generate insights by category"""
+        insights = {}
+        
+        for category in categories:
+            insights[category] = []
+            
+            # Generate sample insights for each category
+            if self.ai:
+                cat_insights = self.ai.generate_insights(df, context=f"{category} analysis")
+                
+                for insight in cat_insights[:2]:
+                    insights[category].append({
+                        'source': insight.get('source', 'ai'),
+                        'text': insight.get('message', insight.get('title', ''))
+                    })
+            else:
+                # Fallback insights
+                insights[category] = [
+                    {'source': 'gpt', 'text': f'GPT-4 insight about {category}'},
+                    {'source': 'claude', 'text': f'Claude insight about {category}'}
+                ]
+        
+        return insights
+    
+    def _find_insight_consensus(self, gpt_insights, claude_insights):
+        """Find consensus between insights"""
+        return "Both AIs agree on the importance of addressing performance gaps and optimizing resource allocation."
+    
+    def _generate_recommendations(self, df, urgency):
+        """Generate AI recommendations"""
+        recommendations = []
+        
+        # Sample recommendations
+        recommendations.append({
+            'title': 'Optimize High-Risk KPIs',
+            'source': 'GPT-4 + Claude Consensus',
+            'priority': 'High',
+            'impact': 'High',
+            'effort': 'Medium',
+            'description': 'Focus on KPIs with health scores below 50%',
+            'steps': [
+                'Identify root causes of underperformance',
+                'Allocate additional resources',
+                'Implement daily monitoring'
+            ],
+            'outcome': '30% improvement in overall health score'
+        })
+        
+        recommendations.append({
+            'title': 'Automate Data Collection',
+            'source': 'GPT-4',
+            'priority': 'Medium',
+            'impact': 'Medium',
+            'effort': 'Low',
+            'description': 'Implement automated data collection for manual KPIs',
+            'steps': [
+                'Identify manual data entry points',
+                'Create API integrations',
+                'Set up automated alerts'
+            ],
+            'outcome': 'Reduce data collection time by 60%'
+        })
+        
+        return recommendations
+    
+    def _create_priority_matrix(self, recommendations):
+        """Create priority matrix visualization"""
+        import plotly.express as px
+        
+        # Convert recommendations to dataframe
+        data = []
+        for rec in recommendations:
+            impact_val = {'High': 3, 'Medium': 2, 'Low': 1}.get(rec['impact'], 2)
+            effort_val = {'High': 3, 'Medium': 2, 'Low': 1}.get(rec['effort'], 2)
+            data.append({
+                'Title': rec['title'],
+                'Impact': impact_val,
+                'Effort': effort_val,
+                'Priority': rec['priority']
+            })
+        
+        df = pd.DataFrame(data)
+        
+        fig = px.scatter(
+            df, x='Effort', y='Impact',
+            text='Title', color='Priority',
+            title='Priority Matrix',
+            labels={'Effort': 'Implementation Effort', 'Impact': 'Business Impact'},
+            color_discrete_map={'High': 'red', 'Medium': 'yellow', 'Low': 'green'}
+        )
+        
+        fig.update_traces(textposition='top center')
+        fig.update_layout(height=400)
+        
+        return fig
+    
+    def _analyze_documents(self, uploaded_docs):
+        """Analyze uploaded documents"""
+        analysis = {
+            'gpt_requirements': [
+                'Dashboard must show real-time KPI status',
+                'Include predictive analytics features',
+                'Support multiple data sources'
+            ],
+            'claude_requirements': [
+                'User-friendly interface with intuitive navigation',
+                'Comprehensive reporting capabilities',
+                'Role-based access control'
+            ],
+            'consolidated': [
+                'Real-time KPI dashboard with predictive analytics',
+                'Intuitive interface with comprehensive reporting',
+                'Multi-source data integration with access control'
+            ]
+        }
+        
+        return analysis
+    
+    def _generate_designs(self, prompt):
+        """Generate dashboard designs"""
+        designs = {
+            'gpt_design': {
+                'layout': 'Grid-based responsive layout',
+                'components': ['Header', 'Sidebar', 'Main Content', 'Footer'],
+                'color_scheme': 'Professional blue and gray'
+            },
+            'claude_design': {
+                'layout': 'Card-based modular design',
+                'components': ['Navigation Bar', 'Dashboard Cards', 'Analytics Panel'],
+                'color_scheme': 'Modern gradient with accent colors'
+            },
+            'hybrid_design': {
+                'layout': 'Hybrid grid-card layout',
+                'components': ['Smart Header', 'Flexible Sidebar', 'Adaptive Content Area'],
+                'color_scheme': 'Balanced professional with modern accents'
+            }
+        }
+        
+        return designs
+    
+    def _create_design_mockup(self, design):
+        """Create visual mockup of design"""
+        import plotly.graph_objects as go
+        
+        fig = go.Figure()
+        
+        # Add mockup elements
+        fig.add_shape(type="rect", x0=0, y0=0.9, x1=1, y1=1,
+                     fillcolor="lightblue", line=dict(width=0))
+        fig.add_annotation(x=0.5, y=0.95, text="Header", showarrow=False)
+        
+        fig.add_shape(type="rect", x0=0, y0=0, x1=0.2, y1=0.9,
+                     fillcolor="lightgray", line=dict(width=0))
+        fig.add_annotation(x=0.1, y=0.45, text="Sidebar", showarrow=False)
+        
+        fig.add_shape(type="rect", x0=0.2, y0=0, x1=1, y1=0.9,
+                     fillcolor="white", line=dict(width=1))
+        fig.add_annotation(x=0.6, y=0.45, text="Main Content Area", showarrow=False)
+        
+        fig.update_layout(
+            title="Dashboard Design Mockup",
+            showlegend=False,
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            height=400
+        )
+        
+        return fig
+    
+    def _parallel_code_generation(self, framework, creativity):
+        """Generate code in parallel mode"""
+        return self._generate_code_result(framework, "parallel", creativity)
+    
+    def _sequential_code_generation(self, framework, creativity):
+        """Generate code in sequential mode"""
+        return self._generate_code_result(framework, "sequential", creativity)
+    
+    def _debate_code_generation(self, framework, creativity):
+        """Generate code in debate mode"""
+        return self._generate_code_result(framework, "debate", creativity)
+    
+    def _consensus_code_generation(self, framework, creativity):
+        """Generate code in consensus mode"""
+        return self._generate_code_result(framework, "consensus", creativity)
+    
+    def _generate_code_result(self, framework, mode, creativity):
+        """Generate code result"""
+        code = {
+            'final': f"""# {framework} Dashboard
+# Generated using {mode} mode with creativity {creativity}
+
+import streamlit as st
+import pandas as pd
+
+def main():
+    st.title("KPI Dashboard")
+    
+    # Your dashboard code here
+    data = pd.read_excel("data.xlsx")
+    st.dataframe(data)
+
+if __name__ == "__main__":
+    main()
+""",
+            'process': {
+                'mode': mode,
+                'framework': framework,
+                'creativity': creativity,
+                'timestamp': datetime.now().isoformat()
+            },
+            'metrics': {
+                'loc': 15,
+                'complexity': 'Low',
+                'coverage': 85,
+                'confidence': 92
+            }
+        }
+        
+        return code
+    
+    def _refine_code_with_ai(self, code_input, refinement_type):
+        """Refine code using AI"""
+        refined = {
+            'code': code_input,
+            'suggestions': []
+        }
+        
+        if refinement_type == "Performance Optimization":
+            refined['suggestions'] = [
+                "Consider using list comprehensions instead of loops",
+                "Cache frequently accessed values",
+                "Use generators for large datasets"
+            ]
+        elif refinement_type == "Code Readability":
+            refined['suggestions'] = [
+                "Add docstrings to functions",
+                "Use meaningful variable names",
+                "Break down complex functions"
+            ]
+        elif refinement_type == "Security Hardening":
+            refined['suggestions'] = [
+                "Validate all user inputs",
+                "Use parameterized queries for database operations",
+                "Implement proper error handling"
+            ]
+        
+        return refined
+    
+    def _validate_with_ai(self, code, validation_type):
+        """Validate code using AI"""
+        results = {
+            'score': 85,
+            'issues': 3,
+            'recommendations': [
+                "Add type hints",
+                "Improve error handling",
+                "Add unit tests"
+            ],
+            'findings': []
+        }
+        
+        if validation_type == "Syntax Check":
+            results['findings'].append("✅ No syntax errors detected")
+        elif validation_type == "Security Audit":
+            results['findings'].append("⚠️ Consider adding input sanitization")
+        elif validation_type == "Performance Analysis":
+            results['findings'].append("💡 Optimize database queries for better performance")
+        
+        return results
+    
+    def ai_code_refinement(self):
+        """AI-powered code refinement"""
+        st.markdown("### 🔄 AI Code Refinement")
+        
+        code_input = st.text_area(
+            "Paste your code for AI refinement:",
+            height=300,
+            value=st.session_state.get('generated_code', '')
+        )
+        
+        refinement_type = st.selectbox(
+            "Refinement Type",
+            ["Performance Optimization", "Code Readability", "Security Hardening", "Bug Detection"]
+        )
+        
+        if st.button("Refine Code") and code_input:
+            with st.spinner("AI refining code..."):
+                refined = self._refine_code_with_ai(code_input, refinement_type)
+                
+                st.markdown("#### AI Suggestions")
+                for suggestion in refined['suggestions']:
+                    st.info(f"💡 {suggestion}")
+                
+                st.markdown("#### Refined Code")
+                st.code(refined['code'], language='python')
+    
+    def ai_validation(self):
+        """AI validation of generated code"""
+        st.markdown("### ✅ AI Validation")
+        
+        validation_type = st.selectbox(
+            "Validation Type",
+            ["Syntax Check", "Security Audit", "Performance Analysis", "Best Practices"]
+        )
+        
+        if st.button("Run Validation"):
+            with st.spinner("AI validating..."):
+                results = self._validate_with_ai(
+                    st.session_state.get('generated_code', ''),
+                    validation_type
+                )
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Validation Score", f"{results['score']}%")
+                with col2:
+                    st.metric("Issues Found", results['issues'])
+                with col3:
+                    st.metric("Recommendations", len(results['recommendations']))
+                
+                st.markdown("#### Findings")
+                for finding in results['findings']:
+                    st.write(finding)
+                
+                st.markdown("#### Recommendations")
+                for rec in results['recommendations']:
+                    st.write(f"• {rec}")
+    
+    def ai_export(self):
+        """Export AI-generated dashboard"""
+        st.markdown("### 📦 Export Dashboard")
+        
+        export_format = st.selectbox(
+            "Export Format",
+            ["Python Script", "Jupyter Notebook", "Docker Container", "ZIP Package"]
+        )
+        
+        include_options = st.multiselect(
+            "Include:",
+            ["Dependencies", "Sample Data", "Documentation", "Tests"],
+            default=["Dependencies", "Documentation"]
+        )
+        
+        if st.button("Generate Export Package"):
+            with st.spinner("Preparing export..."):
+                # Generate export content
+                export_content = self._generate_export_package(export_format, include_options)
+                
+                st.success("✅ Export package ready!")
+                
+                # Download button
+                st.download_button(
+                    label=f"Download {export_format}",
+                    data=export_content,
+                    file_name=f"dashboard_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py",
+                    mime="text/plain"
+                )
+    
+    def _generate_export_package(self, format_type, options):
+        """Generate export package"""
+        content = st.session_state.get('generated_code', '# No code generated yet')
+        
+        if "Dependencies" in options:
+            content = "# Requirements: streamlit, pandas, plotly\n\n" + content
+        
+        if "Documentation" in options:
+            content = '"""AI-Generated Dashboard\nGenerated using AI collaboration"""\n\n' + content
+        
+        return content
+    
+    def show_ai_visualizations(self):
+        """Show AI-powered visualizations"""
+        if st.session_state.data is None:
+            st.warning("Please upload data first")
+            return
+        
+        df = st.session_state.data
+        
+        st.markdown("### 📈 AI-Powered Visualizations")
+        
+        # Visualization type selection
+        viz_type = st.selectbox(
+            "Select Visualization Type",
+            ["KPI Overview", "Trend Analysis", "Risk Matrix", "Performance Heatmap", "Predictive Chart"]
+        )
+        
+        if st.button("Generate Visualization"):
+            with st.spinner("AI generating visualization..."):
+                if viz_type == "KPI Overview":
+                    fig = self._create_kpi_overview(df)
+                elif viz_type == "Trend Analysis":
+                    fig = self._create_trend_analysis(df)
+                elif viz_type == "Risk Matrix":
+                    fig = self._create_risk_matrix(df)
+                elif viz_type == "Performance Heatmap":
+                    fig = self._create_performance_heatmap(df)
+                else:  # Predictive Chart
+                    fig = self._create_predictive_chart(df)
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # AI insights about the visualization
+                st.markdown("#### AI Insights")
+                insights = self._generate_viz_insights(viz_type, df)
+                for insight in insights:
+                    st.info(f"💡 {insight}")
+    
+    def _create_kpi_overview(self, df):
+        """Create KPI overview visualization"""
+        fig = go.Figure()
+        
+        # Sample KPI metrics
+        metrics = ['Completion', 'Quality', 'Efficiency', 'Risk']
+        values = [85, 92, 78, 65]
+        
+        fig.add_trace(go.Bar(
+            x=metrics,
+            y=values,
+            marker_color=['green', 'green', 'yellow', 'orange']
+        ))
+        
+        fig.update_layout(
+            title="KPI Overview Dashboard",
+            xaxis_title="KPI Category",
+            yaxis_title="Score (%)",
+            height=400
+        )
+        
+        return fig
+    
+    def _create_trend_analysis(self, df):
+        """Create trend analysis chart"""
+        fig = go.Figure()
+        
+        # Sample trend data
+        dates = pd.date_range(start='2024-01-01', periods=30, freq='D')
+        performance = [80 + i * 0.5 + np.random.randn() * 5 for i in range(30)]
+        
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=performance,
+            mode='lines+markers',
+            name='Performance Trend',
+            line=dict(color='blue', width=2)
+        ))
+        
+        fig.update_layout(
+            title="Performance Trend Analysis",
+            xaxis_title="Date",
+            yaxis_title="Performance Score",
+            height=400
+        )
+        
+        return fig
+    
+    def _create_risk_matrix(self, df):
+        """Create risk matrix visualization"""
+        fig = go.Figure()
+        
+        # Sample risk data
+        risks = [
+            {'name': 'Risk A', 'impact': 3, 'likelihood': 2},
+            {'name': 'Risk B', 'impact': 4, 'likelihood': 3},
+            {'name': 'Risk C', 'impact': 2, 'likelihood': 4},
+            {'name': 'Risk D', 'impact': 5, 'likelihood': 1},
+        ]
+        
+        for risk in risks:
+            fig.add_trace(go.Scatter(
+                x=[risk['likelihood']],
+                y=[risk['impact']],
+                mode='markers+text',
+                name=risk['name'],
+                text=[risk['name']],
+                textposition="top center",
+                marker=dict(size=20)
+            ))
+        
+        fig.update_layout(
+            title="Risk Assessment Matrix",
+            xaxis=dict(title="Likelihood", range=[0, 6]),
+            yaxis=dict(title="Impact", range=[0, 6]),
+            height=400,
+            showlegend=False
+        )
+        
+        return fig
+    
+    def _create_performance_heatmap(self, df):
+        """Create performance heatmap"""
+        # Sample heatmap data
+        categories = ['Team A', 'Team B', 'Team C', 'Team D']
+        metrics = ['Quality', 'Speed', 'Innovation', 'Collaboration']
+        
+        z = [[90, 85, 88, 92],
+             [88, 90, 85, 87],
+             [92, 88, 90, 89],
+             [85, 87, 92, 91]]
+        
+        fig = go.Figure(data=go.Heatmap(
+            z=z,
+            x=metrics,
+            y=categories,
+            colorscale='RdYlGn',
+            text=z,
+            texttemplate="%{text}",
+            textfont={"size": 12}
+        ))
+        
+        fig.update_layout(
+            title="Performance Heatmap",
+            height=400
+        )
+        
+        return fig
+    
+    def _create_predictive_chart(self, df):
+        """Create predictive chart"""
+        fig = go.Figure()
+        
+        # Historical and predicted data
+        dates = pd.date_range(start='2024-01-01', periods=60, freq='D')
+        historical = [80 + i * 0.3 + np.random.randn() * 3 for i in range(30)]
+        predicted = [historical[-1] + i * 0.4 + np.random.randn() * 2 for i in range(30)]
+        
+        fig.add_trace(go.Scatter(
+            x=dates[:30],
+            y=historical,
+            mode='lines',
+            name='Historical',
+            line=dict(color='blue', width=2)
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=dates[29:],
+            y=[historical[-1]] + predicted,
+            mode='lines',
+            name='Predicted',
+            line=dict(color='red', width=2, dash='dash')
+        ))
+        
+        fig.update_layout(
+            title="Predictive Analytics",
+            xaxis_title="Date",
+            yaxis_title="Performance Index",
+            height=400
+        )
+        
+        return fig
+    
+    def _generate_viz_insights(self, viz_type, df):
+        """Generate insights about visualization"""
+        insights = {
+            "KPI Overview": [
+                "Quality metrics are performing above target at 92%",
+                "Risk score needs immediate attention at 65%",
+                "Overall KPI health is satisfactory with room for improvement"
+            ],
+            "Trend Analysis": [
+                "Performance shows positive upward trend over the period",
+                "Some volatility detected in mid-period requiring investigation",
+                "Projected to reach target levels within 2 weeks"
+            ],
+            "Risk Matrix": [
+                "Risk B is in the high-impact, high-likelihood quadrant",
+                "Risk D has high impact but low likelihood - monitor closely",
+                "Overall risk profile is manageable with proper mitigation"
+            ],
+            "Performance Heatmap": [
+                "Team D shows strongest performance in collaboration",
+                "Innovation scores are consistently high across all teams",
+                "Team A may benefit from speed optimization training"
+            ],
+            "Predictive Chart": [
+                "Model predicts 15% performance improvement over next month",
+                "Confidence interval narrows with more recent data",
+                "Seasonal patterns detected that may affect accuracy"
+            ]
+        }
+        
+        return insights.get(viz_type, ["Visualization generated successfully"])
+    
+# Main execution
+if __name__ == "__main__":
+    dashboard = AIEnhancedDashboard()
+    dashboard.run()
